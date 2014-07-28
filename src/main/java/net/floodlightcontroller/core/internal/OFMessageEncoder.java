@@ -43,6 +43,7 @@ public class OFMessageEncoder extends OneToOneEncoder {
         List<OFMessage> msglist = (List<OFMessage>)msg;
         int size = 0;
         for (OFMessage ofm :  msglist) {
+        	// we need to increase the size for the new action // ljxuan
                 size += ofm.getLengthU();
         }
 

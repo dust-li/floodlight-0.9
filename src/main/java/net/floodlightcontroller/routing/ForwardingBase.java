@@ -38,8 +38,13 @@ import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceListener;
 import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.SwitchPort;
+import net.floodlightcontroller.distributeapp.DistributeApp;
+import net.floodlightcontroller.distributeapp.Utils;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPacket;
+import net.floodlightcontroller.packet.IPv4;
+import net.floodlightcontroller.packet.TCP;
+import net.floodlightcontroller.packet.UDP;
 import net.floodlightcontroller.routing.IRoutingService;
 import net.floodlightcontroller.routing.IRoutingDecision;
 import net.floodlightcontroller.routing.Route;
@@ -53,6 +58,7 @@ import org.openflow.protocol.OFMatch;
 import org.openflow.protocol.OFMessage;
 import org.openflow.protocol.OFPacketIn;
 import org.openflow.protocol.OFPacketOut;
+import org.openflow.protocol.OFPort;
 import org.openflow.protocol.OFType;
 import org.openflow.protocol.action.OFAction;
 import org.openflow.protocol.action.OFActionOutput;
@@ -157,6 +163,11 @@ public abstract class ForwardingBase
                            FloodlightContext cntx) {
         switch (msg.getType()) {
             case PACKET_IN:
+            	// we only handle PACKET_IN that with NO_MATCH reason here
+            	// because the other packet in is send to controller for other modules
+            	if(((OFPacketIn)msg).getReason() != OFPacketIn.OFPacketInReason.NO_MATCH)
+            		return Command.CONTINUE;
+            	
                 IRoutingDecision decision = null;
                 if (cntx != null)
                      decision =
@@ -220,6 +231,25 @@ public abstract class ForwardingBase
         List<OFAction> actions = new ArrayList<OFAction>();
         actions.add(action);
 
+        /*
+         *  add "to controller" action to TCP and UDP flows
+         */
+        Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, 
+                IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
+        if(eth.getPayload() instanceof IPv4 && 
+        		(eth.getPayload().getPayload() instanceof TCP ||
+        		eth.getPayload().getPayload() instanceof UDP))
+        {
+			try {
+		        int flowHash = Utils.getFlowHash((IPv4) eth.getPayload());
+		        DistributeApp.flowhashActionMap.put(flowHash, actions);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+	        //send the packet to the controller // dusklee
+	        actions.add(new OFActionOutput(OFPort.OFPP_CONTROLLER.getValue(), (short) 0xffff));
+        }
+        
         fm.setIdleTimeout(FLOWMOD_DEFAULT_IDLE_TIMEOUT)
             .setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT)
             .setBufferId(OFPacketOut.BUFFER_ID_NONE)
@@ -227,7 +257,8 @@ public abstract class ForwardingBase
             .setCommand(flowModCommand)
             .setMatch(match)
             .setActions(actions)
-            .setLengthU(OFFlowMod.MINIMUM_LENGTH+OFActionOutput.MINIMUM_LENGTH);
+            // we increase the OFActionOutput.MINIMUM_LENGTH because we add "output to controller" action // dusklee
+            .setLengthU(OFFlowMod.MINIMUM_LENGTH+ actions.size() * OFActionOutput.MINIMUM_LENGTH);
 
         List<NodePortTuple> switchPortList = route.getPath();
 
@@ -263,7 +294,8 @@ public abstract class ForwardingBase
             // set input and output ports on the switch
             fm.getMatch().setInputPort(inPort);
             ((OFActionOutput)fm.getActions().get(0)).setPort(outPort);
-
+            
+            
             try {
                 counterStore.updatePktOutFMCounterStore(sw, fm);
                 if (log.isTraceEnabled()) {

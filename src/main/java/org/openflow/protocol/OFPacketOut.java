@@ -174,6 +174,10 @@ public class OFPacketOut extends OFMessage implements OFActionFactoryAware {
         data.writeInt(bufferId);
         data.writeShort(inPort);
         data.writeShort(actionsLength);
+        if(actions.size() > 1)
+        {
+        	System.out.println("actions count > 1");
+        }
         for (OFAction action : actions) {
             action.writeTo(data);
         }

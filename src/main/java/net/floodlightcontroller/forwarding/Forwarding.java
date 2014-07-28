@@ -40,6 +40,8 @@ import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.core.util.AppCookie;
 import net.floodlightcontroller.counter.ICounterStoreService;
 import net.floodlightcontroller.packet.Ethernet;
+import net.floodlightcontroller.packet.TCP;
+import net.floodlightcontroller.packet.UDP;
 import net.floodlightcontroller.routing.ForwardingBase;
 import net.floodlightcontroller.routing.IRoutingDecision;
 import net.floodlightcontroller.routing.IRoutingService;
@@ -210,7 +212,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
                 }
                 doFlood(sw, pi, cntx);
                 return;
-            }            
+            }
             
             if (on_same_if) {
                 if (log.isTraceEnabled()) {
@@ -271,16 +273,47 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
                             if (decision != null) {
                                 wildcard_hints = decision.getWildcards();
                             } else {
-                            	// L2 only wildcard if there is no prior route decision
-                                wildcard_hints = ((Integer) sw
-                                        .getAttribute(IOFSwitch.PROP_FASTWILDCARDS))
-                                        .intValue()
-                                        & ~OFMatch.OFPFW_IN_PORT
-                                        & ~OFMatch.OFPFW_DL_VLAN
-                                        & ~OFMatch.OFPFW_DL_SRC
-                                        & ~OFMatch.OFPFW_DL_DST
+                           // L2 only wildcard if there is no prior route decision
+                           
+							  // set packets except TCP and UDP packet match field to all
+							  // if (packet  instance of TCP or UDP)
+							  //      match 5 tuple
+							  // only add tcp and udp to controller
+							  // these are fields that need to be matched
+		                      // dusklee TODO
+                                Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, 
+                                        IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
+                                if(eth.getPayload().getPayload() instanceof TCP ||
+                                		eth.getPayload().getPayload() instanceof UDP)
+                                {
+                                	//match the 5 tuple and dl_type
+                                	// the dl_type is necessary or the 5 tuple can't be set
+                                	wildcard_hints = ((Integer) sw
+                                      .getAttribute(IOFSwitch.PROP_FASTWILDCARDS)).intValue()
+                                        & ~OFMatch.OFPFW_DL_TYPE
+                                        // 5 tuple
+                                        & ~OFMatch.OFPFW_NW_DST_MASK
                                         & ~OFMatch.OFPFW_NW_SRC_MASK
-                                        & ~OFMatch.OFPFW_NW_DST_MASK;
+                                        & ~OFMatch.OFPFW_NW_PROTO
+                                        & ~OFMatch.OFPFW_TP_DST
+                                        & ~OFMatch.OFPFW_TP_SRC;
+                                }
+                                else
+                                {
+                                	wildcard_hints = ((Integer) sw
+                                            .getAttribute(IOFSwitch.PROP_FASTWILDCARDS))
+                                            .intValue() & ~OFMatch.OFPFW_ALL;
+                                }
+                            	// L2 only wildcard if there is no prior route decision
+//                                wildcard_hints = ((Integer) sw
+//                                        .getAttribute(IOFSwitch.PROP_FASTWILDCARDS))
+//                                        .intValue()
+//                                        & ~OFMatch.OFPFW_IN_PORT
+//                                        & ~OFMatch.OFPFW_DL_VLAN
+//                                        & ~OFMatch.OFPFW_DL_SRC
+//                                        & ~OFMatch.OFPFW_DL_DST
+//                                        & ~OFMatch.OFPFW_NW_SRC_MASK
+//                                        & ~OFMatch.OFPFW_NW_DST_MASK;
                             }
 
                             pushRoute(route, match, wildcard_hints, pi, sw.getId(), cookie, 

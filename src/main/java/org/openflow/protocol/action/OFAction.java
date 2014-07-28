@@ -123,8 +123,13 @@ public class OFAction implements Cloneable {
     }
 
     public void writeTo(ChannelBuffer data) {
+    	try{
         data.writeShort(type.getTypeValue());
         data.writeShort(length);
+    	}catch(Exception ex)
+    	{
+    		System.out.println("error!");
+    	}
         // Note missing PAD, see MINIMUM_LENGTH comment for details
     }
 
